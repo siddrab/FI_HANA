@@ -1,0 +1,621 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "hana_VM1_name": {
+      "type": "string",
+      "metadata": {
+        "description": "The name of you Virtual Machine."
+      }
+    },
+    "hana_VM2_name": {
+      "type": "string",
+      "metadata": {
+        "description": "The name of you Virtual Machine."
+      }
+    },
+    "adminUsername": {
+      "type": "string",
+      "metadata": {
+        "description": "Username for the Virtual Machine."
+      }
+    },
+    "sapuSID": {
+      "type": "string",
+      "metadata": {
+        "description": "Uppercase SAP SID."
+      }
+    },
+    "saplSID": {
+      "type": "string",
+      "metadata": {
+        "description": "Lowercase SAP SID."
+      }
+    },
+    "sapInstance": {
+      "type": "string",
+      "metadata": {
+        "description": "SAP SID Instance Number."
+      }
+    },
+    "authenticationType": {
+      "type": "string",
+      "defaultValue": "password",
+      "allowedValues": [
+        "sshPublicKey",
+        "password"
+      ],
+      "metadata": {
+        "description": "Type of authentication to use on the Virtual Machine. SSH key is recommended."
+      }
+    },
+    "adminPasswordOrKey": {
+      "type": "securestring",
+      "metadata": {
+        "description": "SSH Key or password for the Virtual Machine. SSH key is recommended."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "eastus",
+      "metadata": {
+        "description": "Location for all resources."
+      }
+    },
+    "VmSize": {
+      "type": "string",
+      "defaultValue": "Standard_M128s",
+      "metadata": {
+        "description": "The size of the VM"
+      }
+    },
+    "virtualNetworkResourceGroupName": {
+      "type": "string",
+      "defaultValue": "managed-resources-rg",
+      "metadata": {
+        "description": "Name of the VNET"
+      }
+    },
+    "virtualNetworkName": {
+      "type": "string",
+      "defaultValue": "managed-use1-vnet",
+      "metadata": {
+        "description": "Name of the VNET"
+      }
+    },
+    "subnetName": {
+      "type": "string",
+      "defaultValue": "managed-subnet-hana-use1",
+      "metadata": {
+        "description": "Name of the subnet in the virtual network"
+      }
+    },
+    "networkSecurityGroupName": {
+      "type": "string",
+      "defaultValue": "managed-use1-nsg-Temp",
+      "metadata": {
+        "description": "Name of the Network Security Group"
+      }
+    },
+    "HANALB": {
+      "type": "string",
+      "defaultValue": "[concat(parameters('sapuSID'),'-HANA-LB' )]",
+      "metadata": {
+        "description": "Load Balancer name"
+      }
+    },
+    "ppgname": {
+      "type": "string",
+      "defaultValue": "[concat(parameters('sapuSID'),'-HANA-PG' )]",
+      "metadata": {
+        "description": "Name of the Network Proximity Group"
+      }
+    },
+    "HANA_AvSetName": {
+      "type": "string",
+      "defaultValue": "[concat(parameters('sapuSID'),'-HANA-AS' )]",
+      "metadata": {
+        "description": "Name of the Availability Set"
+      }
+    },
+    "diagnosticsStorageAccountName": {
+      "type": "string"
+    },
+    "diagnosticsStorageAccountId": {
+      "type": "string"
+    }
+  },
+  "variables": {
+    "networkInterfaceName1": "[concat(parameters('hana_VM1_name'),'-nic0')]",
+    "networkInterfaceName2": "[concat(parameters('hana_VM2_name'),'-nic0')]",
+    "subnetRef": "[resourceId(parameters('virtualNetworkResourceGroupName'),'Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), parameters('subnetName'))]",
+    "osDiskType": "Premium_LRS",
+    "lbID": "[resourceId('Microsoft.Network/loadBalancers',parameters('HANALB'))]",
+    "frontEndIPConfigID": "[concat(variables('lbID'),'/frontendIPConfigurations/LoadBalancerFrontEnd')]",
+    "lbPoolID": "[concat(variables('lbID'),'/backendAddressPools/',variables('backendpoolname'))]",
+    "lbProbeID": "[concat(variables('lbID'),'/probes/tcpProbe')]",
+    "backendpoolname": "HANAbackendpool",
+    "linuxConfiguration": {
+      "disablePasswordAuthentication": true,
+      "ssh": {
+        "publicKeys": [
+          {
+            "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
+            "keyData": "[parameters('adminPasswordOrKey')]"
+          }
+        ]
+      }
+    }
+  },
+  "resources": [
+    {
+      "apiVersion": "2019-07-01",
+      "type": "Microsoft.Compute/proximityPlacementGroups",
+      "name": "[parameters('ppgName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "proximityPlacementGroupType": "Standard"
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2018-10-01",
+      "name": "[variables('networkInterfaceName1')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups/', parameters('networkSecurityGroupName'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig",
+            "properties": {
+              "subnet": {
+                "id": "[variables('subnetRef')]"
+              },
+              "primary": true,
+              "privateIPAllocationMethod": "Dynamic",
+              "loadBalancerBackendAddressPools": [
+                {
+                  "id": "[concat(resourceId('Microsoft.Network/loadBalancers', parameters('HANALB')), '/backendAddressPools/',variables('backendpoolname'))]"
+                }
+              ]
+            }
+          },
+          {
+            "name": "ipconfig2",
+            "properties": {
+              "subnet": {
+                "id": "[variables('subnetRef')]"
+              },
+                "privateIPAllocationMethod": "Dynamic",
+                "primary": false,
+                "privateIPAddressVersion": "IPv4"
+              }
+          } 
+        ],
+        "networkSecurityGroup": {
+          "id": "[resourceId('Microsoft.Network/networkSecurityGroups',parameters('networkSecurityGroupName'))]"
+        },
+        "enableAcceleratedNetworking": true
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2018-10-01",
+      "name": "[variables('networkInterfaceName2')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups/', parameters('networkSecurityGroupName'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig",
+            "properties": {
+              "subnet": {
+                "id": "[variables('subnetRef')]"
+              },
+              "primary": true,
+              "privateIPAllocationMethod": "Dynamic",
+              "loadBalancerBackendAddressPools": [
+                {
+                  "id": "[concat(resourceId('Microsoft.Network/loadBalancers', parameters('HANALB')), '/backendAddressPools/',variables('backendpoolname'))]"
+                }
+              ]
+            }
+          },
+          {
+            "name": "ipconfig2",
+            "properties": {
+              "subnet": {
+                "id": "[variables('subnetRef')]"
+              },
+                "privateIPAllocationMethod": "Dynamic",
+                "primary": false,
+                "privateIPAddressVersion": "IPv4"
+            }
+          }          
+        ],
+        "networkSecurityGroup": {
+          "id": "[resourceId('Microsoft.Network/networkSecurityGroups',parameters('networkSecurityGroupName'))]"
+        },
+        "enableAcceleratedNetworking": true
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2019-02-01",
+      "name": "[parameters('networkSecurityGroupName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "SSH",
+            "properties": {
+              "priority": 1000,
+              "protocol": "TCP",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "22"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "2018-02-01",
+      "name": "[parameters('HANALB')]",
+      "type": "Microsoft.Network/loadBalancers",
+      "sku": {
+        "name": "Standard",
+        "tier": "Regional"
+      },
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/availabilitySets', parameters('HANA_AvSetName'))]"
+      ],
+      "properties": {
+        "frontendIPConfigurations": [
+          {
+            "name": "LoadBalancerFrontEnd",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "privateIPAddressVersion": "IPv4",
+              "subnet": {
+                "id": "[variables('subnetRef')]"
+              }
+            }
+          }
+        ],
+        "backendAddressPools": [
+          {
+            "name": "[variables('backendpoolname')]",
+            "properties": {
+              "backendIPConfigurations": []
+            }
+          }
+        ],
+        "loadBalancingRules": [
+          {
+            "name": "LBRule",
+            "properties": {
+              "frontendIPConfiguration": {
+                "id": "[variables('frontEndIPConfigID')]"
+              },
+              "backendAddressPool": {
+                "id": "[variables('lbPoolID')]"
+              },
+              "probe": {
+                "id": "[variables('lbProbeID')]"
+              },
+              "protocol": "All",
+              "loadDistribution": "Default",
+              "disableOutboundSnat": false,
+              "frontendPort": 0,
+              "backendPort": 0,
+              "idleTimeoutInMinutes": 30,
+              "enableFloatingIP": true
+            }
+          }
+        ],
+        "probes": [
+          {
+            "name": "tcpProbe",
+            "properties": {
+              "protocol": "Tcp",
+              "port": "[concat('625', parameters('sapInstance'))]",
+              "intervalInSeconds": 15,
+              "numberOfProbes": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2019-07-01",
+      "name": "[parameters('hana_VM1_name')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/availabilitySets', parameters('HANA_AvSetName'))]",
+        "[resourceId('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName1'))]"
+      ],
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[parameters('VmSize')]"
+        },
+        "storageProfile": {
+          "osDisk": {
+            "createOption": "fromImage",
+            "name": "[concat(parameters('hana_VM1_name'), '-OsDisk')]",
+            "caching": "ReadWrite",
+            "managedDisk": {
+              "storageAccountType": "[variables('osDiskType')]"
+            }
+          },
+          "imageReference": {
+            "publisher": "Redhat",
+            "offer": "RHEL-SAP",
+            "sku": "7.4",
+            "version": "latest"
+          },          
+          "dataDisks": [
+            {
+              "lun": 0,
+              "name": "[concat(parameters('hana_VM1_name'), '-vg01')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 256,
+              "caching": "None",
+              "toBeDetached": false
+            },
+            {
+              "lun": 1,
+              "name": "[concat(parameters('hana_VM1_name'), '-HanaShared')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 512,
+              "caching": "ReadOnly",
+              "toBeDetached": false
+            },
+            {
+              "lun": 2,
+              "name": "[concat(parameters('hana_VM1_name'), '-Backup0')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 2048,
+              "caching": "None",
+              "toBeDetached": false
+            },
+            {
+              "lun": 3,
+              "name": "[concat(parameters('hana_VM1_name'), '-Backup1')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 2048,
+              "caching": "None",
+              "toBeDetached": false
+            },
+            {
+              "lun": 4,
+              "name": "[concat(parameters('hana_VM1_name'), '-HanaLog0')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 512,
+              "caching": "None",
+              "toBeDetached": false
+            },
+            {
+              "lun": 5,
+              "name": "[concat(parameters('hana_VM1_name'), '-HanaLog1')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 512,
+              "caching": "None",
+              "toBeDetached": false
+            },
+            {
+              "lun": 6,
+              "name": "[concat(parameters('hana_VM1_name'), '-HanaData0')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 1024,
+              "caching": "None",
+              "toBeDetached": false
+            },
+            {
+              "lun": 7,
+              "name": "[concat(parameters('hana_VM1_name'), '-HanaData1')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 1024,
+              "caching": "None",
+              "writeAcceleratorEnabled": true,
+              "toBeDetached": false
+            },
+            {
+              "lun": 8,
+              "name": "[concat(parameters('hana_VM1_name'), '-HanaData2')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 1024,
+              "caching": "None",
+              "writeAcceleratorEnabled": true,
+              "toBeDetached": false
+            }
+          ]
+        },
+        "availabilitySet": {
+          "id": "[resourceId('Microsoft.Compute/availabilitySets', parameters('HANA_AvSetName'))]"
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName1'))]"
+            }
+          ]
+        },
+        "osProfile": {
+          "computerName": "[parameters('hana_VM1_name')]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPasswordOrKey')]",
+          "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'password'), json('null'), variables('linuxConfiguration'))]"
+        },
+        "diagnosticsProfile": {
+          "bootDiagnostics": {
+            "enabled": true,
+            "storageUri": "[concat('https://', parameters('diagnosticsStorageAccountName'), '.blob.core.windows.net/')]"
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2019-07-01",
+      "name": "[parameters('hana_VM2_name')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/availabilitySets', parameters('HANA_AvSetName'))]",
+        "[resourceId('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName2'))]"
+      ],
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[parameters('VmSize')]"
+        },
+        "storageProfile": {
+          "osDisk": {
+            "createOption": "fromImage",
+            "name": "[concat(parameters('hana_VM2_name'), '-OsDisk')]",
+            "caching": "ReadWrite",
+            "managedDisk": {
+              "storageAccountType": "[variables('osDiskType')]"
+            }
+          },
+          "imageReference": {
+            "publisher": "Redhat",
+            "offer": "RHEL-SAP",
+            "sku": "7.6",
+            "version": "latest"
+          },
+          "dataDisks": [
+            {
+              "lun": 0,
+              "name": "[concat(parameters('hana_VM2_name'), '-vg01')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 256,
+              "caching": "None",
+              "toBeDetached": false
+            },
+            {
+              "lun": 1,
+              "name": "[concat(parameters('hana_VM2_name'), '-HanaShared')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 512,
+              "caching": "ReadOnly",
+              "toBeDetached": false
+            },
+            {
+              "lun": 2,
+              "name": "[concat(parameters('hana_VM2_name'), '-Backup0')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 2048,
+              "caching": "None",
+              "toBeDetached": false
+            },
+            {
+              "lun": 3,
+              "name": "[concat(parameters('hana_VM2_name'), '-Backup1')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 2048,
+              "caching": "None",
+              "toBeDetached": false
+            },
+            {
+              "lun": 4,
+              "name": "[concat(parameters('hana_VM2_name'), '-HanaLog0')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 512,
+              "caching": "None",
+              "writeAcceleratorEnabled": true,
+              "toBeDetached": false
+            },
+            {
+              "lun": 5,
+              "name": "[concat(parameters('hana_VM2_name'), '-HanaLog1')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 512,
+              "caching": "None",
+              "writeAcceleratorEnabled": true,
+              "toBeDetached": false
+            },
+            {
+              "lun": 6,
+              "name": "[concat(parameters('hana_VM2_name'), '-HanaData0')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 1024,
+              "caching": "None",
+              "toBeDetached": false
+            },
+            {
+              "lun": 7,
+              "name": "[concat(parameters('hana_VM2_name'), '-HanaData1')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 1024,
+              "caching": "None",
+              "toBeDetached": false
+            },
+            {
+              "lun": 8,
+              "name": "[concat(parameters('hana_VM2_name'), '-HanaData2')]",
+              "createOption": "Empty",
+              "DiskSizeGB": 1024,
+              "caching": "None",
+              "toBeDetached": false
+            }
+          ]
+        },
+        "availabilitySet": {
+          "id": "[resourceId('Microsoft.Compute/availabilitySets', parameters('HANA_AvSetName'))]"
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName2'))]"
+            }
+          ]
+        },
+        "osProfile": {
+          "computerName": "[parameters('hana_VM2_name')]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPasswordOrKey')]",
+          "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'password'), json('null'), variables('linuxConfiguration'))]"
+        },
+        "diagnosticsProfile": {
+          "bootDiagnostics": {
+            "enabled": true,
+            "storageUri": "[concat('https://', parameters('diagnosticsStorageAccountName'), '.blob.core.windows.net/')]"
+          }
+        }
+      }
+    },
+    {
+      "name": "[parameters('HANA_AvSetName')]",
+      "type": "Microsoft.Compute/availabilitySets",
+      "location": "[parameters('location')]",
+      "apiVersion": "2019-07-01",
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/proximityPlacementGroups',parameters('ppgName'))]"
+      ],
+      "tags": {
+        "displayName": "HANA_AvSet"
+      },
+      "properties": {
+        "platformUpdateDomainCount": 2,
+        "platformFaultDomainCount": 3,
+        "proximityPlacementGroup": {
+          "id": "[resourceId('Microsoft.Compute/proximityPlacementGroups',parameters('ppgName'))]"
+        }
+      },
+      "sku": {
+        "name": "Aligned"
+      }
+    }
+  ],
+  "outputs": {
+  }
+}

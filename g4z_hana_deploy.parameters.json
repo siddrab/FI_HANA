@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "adminUsername": {
+      "value": "xomroot"
+    },
+    "hana_VM1_name": {
+      "value": "azrhyhana01"
+    },
+    "hana_VM2_name": {
+      "value": "azrhzhana01"
+    },
+    "sapuSID": {
+      "value": "G4Z"
+    },
+    "saplSID": {
+      "value": "g4z"
+    },
+    "sapInstance": {
+      "value": "00"
+    },
+    "diagnosticsStorageAccountName": {
+        "value": "rgsapg4xpocdevdiag"
+    },
+    "diagnosticsStorageAccountId": {
+        "value": "/subscriptions/dc3603a9-58c2-4916-9823-160062d01cc4/resourceGroups/RG_SAP_G4X_POC_DEV/providers/Microsoft.Storage/storageAccounts/rgsapg4xpocdevdiag"
+    }
+  }
+}
