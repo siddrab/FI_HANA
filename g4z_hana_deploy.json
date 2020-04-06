@@ -71,21 +71,21 @@
     },
     "virtualNetworkResourceGroupName": {
       "type": "string",
-      "defaultValue": "managed-resources-rg",
+      "defaultValue": "East2_VNET",
       "metadata": {
         "description": "Name of the VNET"
       }
     },
     "virtualNetworkName": {
       "type": "string",
-      "defaultValue": "managed-use1-vnet",
+      "defaultValue": "Sid_East2_VNET",
       "metadata": {
         "description": "Name of the VNET"
       }
     },
     "subnetName": {
       "type": "string",
-      "defaultValue": "managed-subnet-hana-use1",
+      "defaultValue": "default",
       "metadata": {
         "description": "Name of the subnet in the virtual network"
       }
@@ -93,6 +93,12 @@
     "networkSecurityGroupName": {
       "type": "string",
       "defaultValue": "managed-use1-nsg-Temp",
+      "metadata": {
+        "description": "Name of the Network Security Group"
+      }
+    },
+    "nsgResourceGroupName": {
+      "type": "string",
       "metadata": {
         "description": "Name of the Network Security Group"
       }
@@ -123,18 +129,34 @@
     },
     "diagnosticsStorageAccountId": {
       "type": "string"
+    },
+    "_artifactsLocation": {
+      "type": "string",
+      "metadata": {
+        "description": "The base URI where artifacts required by this template are located. When the template is deployed using the accompanying scripts, a private location in the subscription will be used and this value will be automatically generated."
+      },
+      "defaultValue": "https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/101-vm-automatic-static-ip/"
+    },
+    "_artifactsLocationSasToken": {
+      "type": "securestring",
+      "metadata": {
+        "description": "The sasToken required to access baseURL.  When the template is deployed using the accompanying scripts, a sasToken will be automatically generated."
+      },
+      "defaultValue": ""
     }
   },
   "variables": {
     "networkInterfaceName1": "[concat(parameters('hana_VM1_name'),'-nic0')]",
     "networkInterfaceName2": "[concat(parameters('hana_VM2_name'),'-nic0')]",
     "subnetRef": "[resourceId(parameters('virtualNetworkResourceGroupName'),'Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), parameters('subnetName'))]",
+    "nsgRef": "[resourceId(parameters('nsgResourceGroupName'),'Microsoft.Network/networkSecurityGroups',parameters('networkSecurityGroupName'))]",
     "osDiskType": "Premium_LRS",
     "lbID": "[resourceId('Microsoft.Network/loadBalancers',parameters('HANALB'))]",
     "frontEndIPConfigID": "[concat(variables('lbID'),'/frontendIPConfigurations/LoadBalancerFrontEnd')]",
     "lbPoolID": "[concat(variables('lbID'),'/backendAddressPools/',variables('backendpoolname'))]",
     "lbProbeID": "[concat(variables('lbID'),'/probes/tcpProbe')]",
     "backendpoolname": "HANAbackendpool",
+    "updateip_templateUri": "[uri(parameters('_artifactsLocation'), concat('nested/update-nic.json'))]",
     "linuxConfiguration": {
       "disablePasswordAuthentication": true,
       "ssh": {
@@ -163,7 +185,6 @@
       "name": "[variables('networkInterfaceName1')]",
       "location": "[parameters('location')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Network/networkSecurityGroups/', parameters('networkSecurityGroupName'))]"
       ],
       "properties": {
         "ipConfigurations": [
@@ -174,28 +195,24 @@
                 "id": "[variables('subnetRef')]"
               },
               "primary": true,
-              "privateIPAllocationMethod": "Dynamic",
-              "loadBalancerBackendAddressPools": [
-                {
-                  "id": "[concat(resourceId('Microsoft.Network/loadBalancers', parameters('HANALB')), '/backendAddressPools/',variables('backendpoolname'))]"
-                }
-              ]
+              "privateIPAllocationMethod": "Dynamic"
+
             }
           },
           {
-            "name": "ipconfig2",
+            "name": "ipconfig1",
             "properties": {
               "subnet": {
                 "id": "[variables('subnetRef')]"
               },
-                "privateIPAllocationMethod": "Dynamic",
-                "primary": false,
-                "privateIPAddressVersion": "IPv4"
-              }
-          } 
+              "privateIPAllocationMethod": "Dynamic",
+              "primary": false,
+              "privateIPAddressVersion": "IPv4"
+            }
+          }
         ],
         "networkSecurityGroup": {
-          "id": "[resourceId('Microsoft.Network/networkSecurityGroups',parameters('networkSecurityGroupName'))]"
+          "id": "[variables('nsgRef')]"
         },
         "enableAcceleratedNetworking": true
       }
@@ -206,7 +223,6 @@
       "name": "[variables('networkInterfaceName2')]",
       "location": "[parameters('location')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Network/networkSecurityGroups/', parameters('networkSecurityGroupName'))]"
       ],
       "properties": {
         "ipConfigurations": [
@@ -217,53 +233,26 @@
                 "id": "[variables('subnetRef')]"
               },
               "primary": true,
-              "privateIPAllocationMethod": "Dynamic",
-              "loadBalancerBackendAddressPools": [
-                {
-                  "id": "[concat(resourceId('Microsoft.Network/loadBalancers', parameters('HANALB')), '/backendAddressPools/',variables('backendpoolname'))]"
-                }
-              ]
+              "privateIPAllocationMethod": "Dynamic"
+
             }
           },
           {
-            "name": "ipconfig2",
+            "name": "ipconfig1",
             "properties": {
               "subnet": {
                 "id": "[variables('subnetRef')]"
               },
-                "privateIPAllocationMethod": "Dynamic",
-                "primary": false,
-                "privateIPAddressVersion": "IPv4"
-            }
-          }          
-        ],
-        "networkSecurityGroup": {
-          "id": "[resourceId('Microsoft.Network/networkSecurityGroups',parameters('networkSecurityGroupName'))]"
-        },
-        "enableAcceleratedNetworking": true
-      }
-    },
-    {
-      "type": "Microsoft.Network/networkSecurityGroups",
-      "apiVersion": "2019-02-01",
-      "name": "[parameters('networkSecurityGroupName')]",
-      "location": "[parameters('location')]",
-      "properties": {
-        "securityRules": [
-          {
-            "name": "SSH",
-            "properties": {
-              "priority": 1000,
-              "protocol": "TCP",
-              "access": "Allow",
-              "direction": "Inbound",
-              "sourceAddressPrefix": "*",
-              "sourcePortRange": "*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange": "22"
+              "privateIPAllocationMethod": "Dynamic",
+              "primary": false,
+              "privateIPAddressVersion": "IPv4"
             }
           }
-        ]
+        ],
+        "networkSecurityGroup": {
+          "id": "[variables('nsgRef')]"
+        },
+        "enableAcceleratedNetworking": true
       }
     },
     {
@@ -276,7 +265,9 @@
       },
       "location": "[parameters('location')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Compute/availabilitySets', parameters('HANA_AvSetName'))]"
+        "[resourceId('Microsoft.Compute/availabilitySets', parameters('HANA_AvSetName'))]",
+        "[resourceId('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName1'))]",
+        "[resourceId('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName2'))]"
       ],
       "properties": {
         "frontendIPConfigurations": [
@@ -362,7 +353,7 @@
             "offer": "RHEL-SAP",
             "sku": "7.4",
             "version": "latest"
-          },          
+          },
           "dataDisks": [
             {
               "lun": 0,
@@ -426,7 +417,7 @@
               "createOption": "Empty",
               "DiskSizeGB": 1024,
               "caching": "None",
-              "writeAcceleratorEnabled": true,
+              "writeAcceleratorEnabled": false,
               "toBeDetached": false
             },
             {
@@ -435,7 +426,7 @@
               "createOption": "Empty",
               "DiskSizeGB": 1024,
               "caching": "None",
-              "writeAcceleratorEnabled": true,
+              "writeAcceleratorEnabled": false,
               "toBeDetached": false
             }
           ]
@@ -531,7 +522,7 @@
               "createOption": "Empty",
               "DiskSizeGB": 512,
               "caching": "None",
-              "writeAcceleratorEnabled": true,
+              "writeAcceleratorEnabled": false,
               "toBeDetached": false
             },
             {
@@ -540,7 +531,7 @@
               "createOption": "Empty",
               "DiskSizeGB": 512,
               "caching": "None",
-              "writeAcceleratorEnabled": true,
+              "writeAcceleratorEnabled": false,
               "toBeDetached": false
             },
             {
@@ -613,6 +604,76 @@
       },
       "sku": {
         "name": "Aligned"
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "name": "updateIpVM12",
+      "apiVersion": "2019-05-01",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName1'))]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[variables('updateip_templateUri')]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "nicName": {
+            "value": "[variables('networkInterfaceName1')]"
+          },
+          "ipName0": {
+            "value": "ipconfig"
+          },
+          "ipName1": {
+            "value": "ipconfig1"
+          },
+          "SubnetRef": {
+            "value": "[variables('subnetRef')]"
+          },
+          "privateIp0": {
+            "value": "[reference(variables('networkInterfaceName1')).ipConfigurations[0].properties.privateIPAddress]"
+          },
+          "privateIp1": {
+            "value": "[reference(variables('networkInterfaceName1')).ipConfigurations[1].properties.privateIPAddress]"
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "name": "updateIpVM22",
+      "apiVersion": "2019-05-01",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName2'))]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[variables('updateip_templateUri')]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "nicName": {
+            "value": "[variables('networkInterfaceName2')]"
+          },
+          "ipName0": {
+            "value": "ipconfig"
+          },
+          "ipName1": {
+            "value": "ipconfig1"
+          },
+          "SubnetRef": {
+            "value": "[variables('subnetRef')]"
+          },
+          "privateIp0": {
+            "value": "[reference(variables('networkInterfaceName2')).ipConfigurations[0].properties.privateIPAddress]"
+          },
+          "privateIp1": {
+            "value": "[reference(variables('networkInterfaceName2')).ipConfigurations[1].properties.privateIPAddress]"
+          }
+        }
       }
     }
   ],

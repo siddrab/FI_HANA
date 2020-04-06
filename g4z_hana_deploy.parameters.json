@@ -20,11 +20,20 @@
     "sapInstance": {
       "value": "00"
     },
-    "diagnosticsStorageAccountName": {
-        "value": "rgsapg4xpocdevdiag"
+    "virtualNetworkResourceGroupName": {
+      "value": "East2_VNET"
     },
-    "diagnosticsStorageAccountId": {
-        "value": "/subscriptions/dc3603a9-58c2-4916-9823-160062d01cc4/resourceGroups/RG_SAP_G4X_POC_DEV/providers/Microsoft.Storage/storageAccounts/rgsapg4xpocdevdiag"
+    "virtualNetworkName": {
+      "value": "Sid_East2_VNET"
+    },
+    "subnetName": {
+      "value": "default"
+    },
+    "networkSecurityGroupName": {
+      "value": "test"
+    },
+    "location": {
+      "value": "eastus2"
     }
   }
 }
