@@ -20,13 +20,13 @@
         "description": "Username for the Virtual Machine."
       }
     },
-    "sapuSID": {
+    "SID": {
       "type": "string",
       "metadata": {
         "description": "Uppercase SAP SID."
       }
     },
-    "saplSID": {
+    "lSID": {
       "type": "string",
       "metadata": {
         "description": "Lowercase SAP SID."
@@ -57,7 +57,6 @@
     },
     "location": {
       "type": "string",
-      "defaultValue": "eastus",
       "metadata": {
         "description": "Location for all resources."
       }
@@ -71,57 +70,20 @@
     },
     "virtualNetworkResourceGroupName": {
       "type": "string",
-      "defaultValue": "East2_VNET",
       "metadata": {
         "description": "Name of the VNET"
       }
     },
     "virtualNetworkName": {
       "type": "string",
-      "defaultValue": "Sid_East2_VNET",
       "metadata": {
         "description": "Name of the VNET"
       }
     },
     "subnetName": {
       "type": "string",
-      "defaultValue": "default",
       "metadata": {
         "description": "Name of the subnet in the virtual network"
-      }
-    },
-    "networkSecurityGroupName": {
-      "type": "string",
-      "defaultValue": "managed-use1-nsg-Temp",
-      "metadata": {
-        "description": "Name of the Network Security Group"
-      }
-    },
-    "nsgResourceGroupName": {
-      "type": "string",
-      "metadata": {
-        "description": "Name of the Network Security Group"
-      }
-    },
-    "HANALB": {
-      "type": "string",
-      "defaultValue": "[concat(parameters('sapuSID'),'-HANA-LB' )]",
-      "metadata": {
-        "description": "Load Balancer name"
-      }
-    },
-    "ppgname": {
-      "type": "string",
-      "defaultValue": "[concat(parameters('sapuSID'),'-HANA-PG' )]",
-      "metadata": {
-        "description": "Name of the Network Proximity Group"
-      }
-    },
-    "HANA_AvSetName": {
-      "type": "string",
-      "defaultValue": "[concat(parameters('sapuSID'),'-HANA-AS' )]",
-      "metadata": {
-        "description": "Name of the Availability Set"
       }
     },
     "diagnosticsStorageAccountName": {
@@ -135,7 +97,7 @@
       "metadata": {
         "description": "The base URI where artifacts required by this template are located. When the template is deployed using the accompanying scripts, a private location in the subscription will be used and this value will be automatically generated."
       },
-      "defaultValue": "https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/101-vm-automatic-static-ip/"
+      "defaultValue": "https://lancecloudshell.blob.core.windows.net/nested"
     },
     "_artifactsLocationSasToken": {
       "type": "securestring",
@@ -146,16 +108,19 @@
     }
   },
   "variables": {
-    "networkInterfaceName1": "[concat(parameters('hana_VM1_name'),'-nic0')]",
-    "networkInterfaceName2": "[concat(parameters('hana_VM2_name'),'-nic0')]",
+    "networkInterfaceName1": "[concat(parameters('hana_VM1_name'), '-nic0')]",
+    "networkInterfaceName2": "[concat(parameters('hana_VM2_name'), '-nic0')]",
     "subnetRef": "[resourceId(parameters('virtualNetworkResourceGroupName'),'Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), parameters('subnetName'))]",
-    "nsgRef": "[resourceId(parameters('nsgResourceGroupName'),'Microsoft.Network/networkSecurityGroups',parameters('networkSecurityGroupName'))]",
     "osDiskType": "Premium_LRS",
-    "lbID": "[resourceId('Microsoft.Network/loadBalancers',parameters('HANALB'))]",
-    "frontEndIPConfigID": "[concat(variables('lbID'),'/frontendIPConfigurations/LoadBalancerFrontEnd')]",
+    "HANA_AvSetName": "[concat(parameters('SID'), '-HANA-AS')]",
+    "ppgName": "[concat(parameters('SID'), '-PG')]",
+    "HANALB": "[concat(parameters('SID'), '-HANA-LB')]",
+    "lbID": "[resourceId('Microsoft.Network/loadBalancers',variables('HANALB'))]",
+    "frontEndIPConfigID": "[concat(variables('lbID'),'/frontendIPConfigurations/', variables('frontendpoolname'))]",
+    "backendpoolname": "[concat(variables('HANALB'), '-BE')]",
     "lbPoolID": "[concat(variables('lbID'),'/backendAddressPools/',variables('backendpoolname'))]",
     "lbProbeID": "[concat(variables('lbID'),'/probes/tcpProbe')]",
-    "backendpoolname": "HANAbackendpool",
+    "frontendpoolname": "[concat(variables('HANALB'), '-FE')]",
     "updateip_templateUri": "[uri(parameters('_artifactsLocation'), concat('nested/update-nic.json'))]",
     "linuxConfiguration": {
       "disablePasswordAuthentication": true,
@@ -173,7 +138,7 @@
     {
       "apiVersion": "2019-07-01",
       "type": "Microsoft.Compute/proximityPlacementGroups",
-      "name": "[parameters('ppgName')]",
+      "name": "[variables('ppgName')]",
       "location": "[parameters('location')]",
       "properties": {
         "proximityPlacementGroupType": "Standard"
@@ -185,6 +150,7 @@
       "name": "[variables('networkInterfaceName1')]",
       "location": "[parameters('location')]",
       "dependsOn": [
+        "[resourceId('Microsoft.Network/loadBalancers', variables('HANALB'))]"
       ],
       "properties": {
         "ipConfigurations": [
@@ -195,7 +161,12 @@
                 "id": "[variables('subnetRef')]"
               },
               "primary": true,
-              "privateIPAllocationMethod": "Dynamic"
+              "privateIPAllocationMethod": "Dynamic",
+              "loadBalancerBackendAddressPools": [
+                {
+                  "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('HANALB')), '/backendAddressPools/',variables('backendpoolname'))]"
+                }
+              ]
 
             }
           },
@@ -211,9 +182,6 @@
             }
           }
         ],
-        "networkSecurityGroup": {
-          "id": "[variables('nsgRef')]"
-        },
         "enableAcceleratedNetworking": true
       }
     },
@@ -223,6 +191,7 @@
       "name": "[variables('networkInterfaceName2')]",
       "location": "[parameters('location')]",
       "dependsOn": [
+        "[resourceId('Microsoft.Network/loadBalancers', variables('HANALB'))]"
       ],
       "properties": {
         "ipConfigurations": [
@@ -233,8 +202,12 @@
                 "id": "[variables('subnetRef')]"
               },
               "primary": true,
-              "privateIPAllocationMethod": "Dynamic"
-
+              "privateIPAllocationMethod": "Dynamic",
+              "loadBalancerBackendAddressPools": [
+                {
+                  "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('HANALB')), '/backendAddressPools/',variables('backendpoolname'))]"
+                }
+              ]
             }
           },
           {
@@ -249,30 +222,22 @@
             }
           }
         ],
-        "networkSecurityGroup": {
-          "id": "[variables('nsgRef')]"
-        },
         "enableAcceleratedNetworking": true
       }
     },
     {
-      "apiVersion": "2018-02-01",
-      "name": "[parameters('HANALB')]",
+      "apiVersion": "2019-11-01",
+      "name": "[variables('HANALB')]",
       "type": "Microsoft.Network/loadBalancers",
       "sku": {
         "name": "Standard",
         "tier": "Regional"
       },
       "location": "[parameters('location')]",
-      "dependsOn": [
-        "[resourceId('Microsoft.Compute/availabilitySets', parameters('HANA_AvSetName'))]",
-        "[resourceId('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName1'))]",
-        "[resourceId('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName2'))]"
-      ],
       "properties": {
         "frontendIPConfigurations": [
           {
-            "name": "LoadBalancerFrontEnd",
+            "name": "[variables('frontendpoolname')]",
             "properties": {
               "privateIPAllocationMethod": "Dynamic",
               "privateIPAddressVersion": "IPv4",
@@ -286,7 +251,19 @@
           {
             "name": "[variables('backendpoolname')]",
             "properties": {
-              "backendIPConfigurations": []
+              "backendIPConfigurations": [
+                {
+                   "id": "[concat(resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName1')), '/ipConfigurations/ipconfig')]"
+                },
+                {
+                  "id": "[concat(resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName1')), '/ipConfigurations/ipconfig')]"
+                }
+             ],
+             "loadBalancingRules": [
+                {
+                  "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('HANALB')), '/loadBalancingRules/LBRule')]"
+                }
+              ]
             }
           }
         ],
@@ -332,7 +309,7 @@
       "name": "[parameters('hana_VM1_name')]",
       "location": "[parameters('location')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Compute/availabilitySets', parameters('HANA_AvSetName'))]",
+        "[resourceId('Microsoft.Compute/availabilitySets', variables('HANA_AvSetName'))]",
         "[resourceId('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName1'))]"
       ],
       "properties": {
@@ -432,7 +409,7 @@
           ]
         },
         "availabilitySet": {
-          "id": "[resourceId('Microsoft.Compute/availabilitySets', parameters('HANA_AvSetName'))]"
+          "id": "[resourceId('Microsoft.Compute/availabilitySets', variables('HANA_AvSetName'))]"
         },
         "networkProfile": {
           "networkInterfaces": [
@@ -461,7 +438,7 @@
       "name": "[parameters('hana_VM2_name')]",
       "location": "[parameters('location')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Compute/availabilitySets', parameters('HANA_AvSetName'))]",
+        "[resourceId('Microsoft.Compute/availabilitySets', variables('HANA_AvSetName'))]",
         "[resourceId('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName2'))]"
       ],
       "properties": {
@@ -561,7 +538,7 @@
           ]
         },
         "availabilitySet": {
-          "id": "[resourceId('Microsoft.Compute/availabilitySets', parameters('HANA_AvSetName'))]"
+          "id": "[resourceId('Microsoft.Compute/availabilitySets', variables('HANA_AvSetName'))]"
         },
         "networkProfile": {
           "networkInterfaces": [
@@ -585,12 +562,12 @@
       }
     },
     {
-      "name": "[parameters('HANA_AvSetName')]",
+      "name": "[variables('HANA_AvSetName')]",
       "type": "Microsoft.Compute/availabilitySets",
       "location": "[parameters('location')]",
       "apiVersion": "2019-07-01",
       "dependsOn": [
-        "[resourceId('Microsoft.Compute/proximityPlacementGroups',parameters('ppgName'))]"
+        "[resourceId('Microsoft.Compute/proximityPlacementGroups',variables('ppgName'))]"
       ],
       "tags": {
         "displayName": "HANA_AvSet"
@@ -599,7 +576,7 @@
         "platformUpdateDomainCount": 2,
         "platformFaultDomainCount": 3,
         "proximityPlacementGroup": {
-          "id": "[resourceId('Microsoft.Compute/proximityPlacementGroups',parameters('ppgName'))]"
+          "id": "[resourceId('Microsoft.Compute/proximityPlacementGroups',variables('ppgName'))]"
         }
       },
       "sku": {

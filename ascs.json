@@ -1,0 +1,507 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "SITE": {
+            "type": "string",
+            "metadata": {
+                "description": "Uppercase Azure site Code."
+            }
+        },
+        "lSITE": {
+            "type": "string",
+            "metadata": {
+                "description": "Lowercase Azure site code."
+            }
+        },
+        "SID": {
+            "type": "string",
+            "metadata": {
+                "description": "Uppercase SAP SID."
+            }
+        },
+        "lSID": {
+            "type": "string",
+            "metadata": {
+                "description": "Lowercase SAP SID."
+            }
+        },
+        "sapInstance": {
+            "type": "string",
+            "metadata": {
+                "description": "SAP SID Instance Number."
+            }
+        },
+        "osType": {
+            "defaultValue": "Windows Server 2019 Datacenter",
+            "allowedValues": [
+                "Windows Server 2016 Datacenter",
+                "Windows Server 2019 Datacenter"
+            ],
+            "type": "string",
+            "metadata": {
+                "description": "The type of the operating system you want to deploy."
+            }
+        },
+        "Admin User": {
+            "defaultValue": "xadmin",
+            "type": "string"
+        },
+        "Admin password": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Password for the Virtual Machine."
+            }
+        },
+        "ClusterInstance": {
+            "type": "string",
+            "metadata": {
+                "description": "Cluster Instance number.  Exp. azrg4zc1a, you would enter 1 here.."
+            }
+        },
+        "VM_SKU": {
+            "defaultValue": "Standard_DS11_v2",
+            "allowedValues": [
+                "Standard_DS11_v2",
+                "Standard_DS12_V2",
+                "Standard_D2s_v3",
+                "Standard_D4s_v3",
+                "Standard_E2_v3",
+                "Standard_E4_v3",
+                "Standard_E2s_v3",
+                "Standard_E4s_v3"
+            ],
+            "type": "string",
+            "metadata": {
+                "description": "The selected VM Size."
+            }
+        },
+        "location": {
+            "type": "string",
+            "metadata": {
+                "description": "Location for all resources."
+            }
+        },
+        "virtualNetworkResourceGroupName": {
+          "type": "string",
+            "metadata": {
+                "description": "Name of the VNET"
+            }
+        },
+        "virtualNetworkName": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the VNET"
+            }
+        },
+        "subnetName": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the subnet in the virtual network"
+            }
+        }
+    },
+    "variables": {
+        "ASCS0_VM_Name": "[concat(parameters('lSITE'), parameters('lSID'), 'c', parameters('ClusterInstance'), 'a')]",
+        "ASCS1_VM_Name": "[concat(parameters('lSITE'), parameters('lSID'), 'c', parameters('ClusterInstance'), 'b')]",
+        "ASCS0_NIC0_Name": "[concat(variables('ASCS0_VM_Name'), '-nic0')]",
+        "ASCS1_NIC0_Name": "[concat(variables('ASCS1_VM_Name'), '-nic0')]",
+        "ppgName": "[concat(parameters('SID'),'-PG' )]",
+        "subnetRef": "[resourceId(parameters('virtualNetworkResourceGroupName'),'Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), parameters('subnetName'))]",
+        "ASCS_AS_Name": "[concat(parameters('SID'), '-ASCS-AS')]",
+        "ASCS_LB_Name": "[concat(parameters('SID'), '-ASCS-LB')]",
+        "ERS_LB_Name": "[concat(parameters('SID'), 'ERS-LB')]",
+        "images": {
+            "Windows Server 2016 Datacenter": {
+                "sku": "2016-Datacenter",
+                "offer": "WindowsServer",
+                "publisher": "MicrosoftWindowsServer",
+                "OSType": "Windows"
+            },
+            "Windows Server 2019 Datacenter": {
+                "sku": "2019-Datacenter",
+                "offer": "WindowsServer",
+                "publisher": "MicrosoftWindowsServer",
+                "OSType": "Windows"
+            }
+        }
+    },
+    "resources": [
+        {
+            "apiVersion": "2019-07-01",
+            "type": "Microsoft.Compute/proximityPlacementGroups",
+            "name": "[variables('ppgName')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "proximityPlacementGroupType": "Standard"
+            }
+        },
+        {
+            "type": "Microsoft.Compute/availabilitySets",
+            "apiVersion": "2019-07-01",
+            "name": "[variables('ASCS_AS_Name')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Compute/proximityPlacementGroups',variables('ppgName'))]"
+            ],
+            "sku": {
+                "name": "Aligned"
+            },
+            "properties": {
+                "platformUpdateDomainCount": 5,
+                "platformFaultDomainCount": 2,
+                "proximityPlacementGroup": {
+                    "id": "[resourceId('Microsoft.Compute/proximityPlacementGroups',variables('ppgName'))]"
+                },
+                "virtualMachines": [
+                    {
+                        "id": "[variables('ASCS0_VM_Name')]"
+                    },
+                    {
+                        "id": "[variables('ASCS1_VM_Name')]"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/loadBalancers",
+            "apiVersion": "2019-11-01",
+            "name": "[variables('ASCS_LB_Name')]",
+            "location": "[parameters('location')]",
+            "sku": {
+                "name": "Standard"
+            },
+            "properties": {
+                "frontendIPConfigurations": [
+                    {
+                        "name": "frontendascs",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            },
+                            "privateIPAddressVersion": "IPv4"
+                        }
+                    }
+                ],
+                "backendAddressPools": [
+                    {
+                        "name": "backendascs",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "backendIPConfigurations": [
+                                {
+                                    "id": "[concat(resourceId('Microsoft.Network/networkInterfaces', variables('ASCS0_NIC0_Name')), '/ipConfigurations/ipconfig')]"
+                                },
+                                {
+                                    "id": "[concat(resourceId('Microsoft.Network/networkInterfaces', variables('ASCS1_NIC0_Name')), '/ipConfigurations/ipconfig')]"
+                                }
+                            ],
+                            "loadBalancingRules": [
+                                {
+                                    "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('ASCS_LB_Name')), '/loadBalancingRules/lbascsRuleall')]"
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "loadBalancingRules": [
+                   {
+                        "name": "lbascsRuleall",
+                        "properties": {
+                            "frontendIPConfiguration": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('ASCS_LB_Name')), '/frontendIPConfigurations/frontendascs')]"
+                            },
+                            "frontendPort": 0,
+                            "backendPort": 0,
+                            "enableFloatingIP": true,
+                            "idleTimeoutInMinutes": 30,
+                            "protocol": "All",
+                            "enableTcpReset": false,
+                            "loadDistribution": "Default",
+                            "disableOutboundSnat": false,
+                            "backendAddressPool": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('ASCS_LB_Name')), '/backendAddressPools/backendascs')]"
+                            },
+                            "probe": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('ASCS_LB_Name')), '/probes/probeascs')]"
+                            }
+                        }
+                    }
+                ],
+                "probes": [
+                    {
+                        "name": "probeascs",
+                        "properties": {
+                            "protocol": "Tcp",
+                            "port": "[concat('625', parameters('sapInstance'))]",
+                            "intervalInSeconds": 5,
+                            "numberOfProbes": 2
+                        }
+                    }
+                ],
+                "inboundNatRules": [],
+                "inboundNatPools": []
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2019-07-01",
+            "name": "[variables('ASCS0_VM_Name')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', variables('ASCS0_NIC0_Name'))]",
+                "[resourceId('Microsoft.Compute/availabilitySets', variables('ASCS_AS_Name'))]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "Standard_E2s_v3"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "MicrosoftWindowsServer",
+                        "offer": "WindowsServer",
+                        "sku": "2016-Datacenter",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "osType": "Windows",
+                        "name": "[concat(variables('ASCS0_VM_Name'), '-OsDisk')]",
+                        "createOption": "FromImage",
+                        "caching": "ReadWrite"
+                    },
+                    "dataDisks": [
+                        {
+                            "lun": 0,
+                            "name": "[concat(variables('ASCS0_VM_Name'), '-ERSdisk')]",
+                            "createOption": "Empty",
+                            "caching": "None",
+                            "DiskSizeGB": 64,
+                            "toBeDetached": false
+                        },
+                        {
+                            "lun": 1,
+                            "name": "[concat(variables('ASCS0_VM_Name'), '-SharedDisk0')]",
+                            "createOption": "Empty",
+                            "caching": "None",
+                            "DiskSizeGB": 32,
+                            "toBeDetached": false
+                        },
+                        {
+                            "lun": 2,
+                            "name": "[concat(variables('ASCS0_VM_Name'), '-SharedDisk1')]",
+                            "createOption": "Empty",
+                            "caching": "None",
+                            "DiskSizeGB": 32,
+                            "toBeDetached": false
+                        },
+                        {
+                            "lun": 3,
+                            "name": "[concat(variables('ASCS0_VM_Name'), '-SharedDisk2')]",
+                            "createOption": "Empty",
+                            "caching": "None",
+                            "DiskSizeGB": 32,
+                            "toBeDetached": false
+                        }
+                    ]
+                },
+                "osProfile": {
+                    "computerName": "[variables('ASCS0_VM_Name')]",
+                    "adminUsername": "[parameters('Admin User')]",
+                    "adminPassword": "[parameters('Admin password')]",
+                    "windowsConfiguration": {
+                        "provisionVMAgent": true,
+                        "enableAutomaticUpdates": true
+                    },
+                    "secrets": [],
+                    "allowExtensionOperations": true
+                },
+                "availabilitySet": {
+                    "id": "[resourceId('Microsoft.Compute/availabilitySets', variables('ASCS_AS_Name'))]"
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('ASCS0_NIC0_Name'))]"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2019-07-01",
+            "name": "[variables('ASCS1_VM_Name')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', variables('ASCS1_NIC0_Name'))]",
+                "[resourceId('Microsoft.Compute/availabilitySets', variables('ASCS_AS_Name'))]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "Standard_E2s_v3"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "MicrosoftWindowsServer",
+                        "offer": "WindowsServer",
+                        "sku": "2016-Datacenter",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "osType": "Windows",
+                        "name": "[concat(variables('ASCS1_VM_Name'), '-OsDisk')]",
+                        "createOption": "FromImage",
+                        "caching": "ReadWrite"
+                    },
+                    "dataDisks": [
+                        {
+                            "lun": 0,
+                            "name": "[concat(variables('ASCS1_VM_Name'), '-ERSdisk')]",
+                            "createOption": "Empty",
+                            "caching": "None",
+                            "DiskSizeGB": 64,
+                            "toBeDetached": false
+                        },
+                        {
+                            "lun": 1,
+                            "name": "[concat(variables('ASCS1_VM_Name'), '-SharedDisk0')]",
+                            "createOption": "Empty",
+                            "caching": "None",
+                            "DiskSizeGB": 32,
+                            "toBeDetached": false
+                        },
+                        {
+                            "lun": 2,
+                            "name": "[concat(variables('ASCS1_VM_Name'), '-SharedDisk1')]",
+                            "createOption": "Empty",
+                            "caching": "None",
+                            "DiskSizeGB": 32,
+                            "toBeDetached": false
+                        },
+                        {
+                            "lun": 3,
+                            "name": "[concat(variables('ASCS1_VM_Name'), '-SharedDisk2')]",
+                            "createOption": "Empty",
+                            "caching": "None",
+                            "DiskSizeGB": 32,
+                            "toBeDetached": false
+                        }
+                    ]
+                },
+                "osProfile": {
+                    "computerName": "[variables('ASCS1_VM_Name')]",
+                    "adminUsername": "[parameters('Admin User')]",
+                    "adminPassword": "[parameters('Admin password')]",
+                    "windowsConfiguration": {
+                        "provisionVMAgent": true,
+                        "enableAutomaticUpdates": true
+                    },
+                    "secrets": [],
+                    "allowExtensionOperations": true
+                },
+                "availabilitySet": {
+                    "id": "[resourceId('Microsoft.Compute/availabilitySets', variables('ASCS_AS_Name'))]"
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('ASCS1_NIC0_Name'))]"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2019-11-01",
+            "name": "[variables('ASCS0_NIC0_Name')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/loadBalancers', variables('ASCS_LB_Name'))]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            },
+                            "primary": true,
+                            "privateIPAddressVersion": "IPv4",
+                            "loadBalancerBackendAddressPools": [
+                                {
+                                    "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('ASCS_LB_Name')), '/backendAddressPools/backendascs')]"
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            },
+                            "primary": false,
+                            "privateIPAddressVersion": "IPv4"
+                        }
+                    }
+                ],
+                "dnsSettings": {
+                    "dnsServers": []
+                },
+                "enableAcceleratedNetworking": false,
+                "enableIPForwarding": false
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2019-11-01",
+            "name": "[variables('ASCS1_NIC0_Name')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/loadBalancers', variables('ASCS_LB_Name'))]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            },
+                            "primary": true,
+                            "privateIPAddressVersion": "IPv4",
+                            "loadBalancerBackendAddressPools": [
+                                {
+                                    "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('ASCS_LB_Name')), '/backendAddressPools/backendascs')]"
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            },
+                            "primary": false,
+                            "privateIPAddressVersion": "IPv4"
+                        }
+                    }
+                ],
+                "dnsSettings": {
+                    "dnsServers": []
+                },
+                "enableAcceleratedNetworking": false,
+                "enableIPForwarding": false
+            }
+        }
+    ],
+    "outputs": {}
+}

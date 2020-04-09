@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "osType": {
+      "value": "Windows Server 2019 Datacenter"
+    },
+    "SID": {
+      "value": "G4Z"
+    },
+    "lSID": {
+      "value": "g4z"
+    },
+    "SITE": {
+      "value": "AZE"
+    },
+    "lSITE": {
+      "value": "aze"
+    },
+    "location": {
+      "value": "eastus"
+    },
+    "virtualNetworkResourceGroupName": {
+      "value": "managed-resources-rg"
+    },
+    "virtualNetworkName": {
+      "value": "managed-use1-vnet"
+    },
+    "subnetName": {
+      "value": "managed-subnet-hana-use1"
+    },
+    "sapInstance": {
+        "value": "00"
+    }
+  }
+}

@@ -6,34 +6,37 @@
       "value": "xomroot"
     },
     "hana_VM1_name": {
-      "value": "azrhyhana01"
+      "value": "azelyhysap01a"
     },
     "hana_VM2_name": {
-      "value": "azrhzhana01"
+      "value": "azelyhzsap01a"
     },
-    "sapuSID": {
+    "SID": {
       "value": "G4Z"
     },
-    "saplSID": {
+    "lSID": {
       "value": "g4z"
     },
     "sapInstance": {
       "value": "00"
     },
     "virtualNetworkResourceGroupName": {
-      "value": "East2_VNET"
+      "value": "managed-resources-rg"
     },
     "virtualNetworkName": {
-      "value": "Sid_East2_VNET"
+      "value": "managed-use1-vnet"
     },
     "subnetName": {
-      "value": "default"
-    },
-    "networkSecurityGroupName": {
-      "value": "test"
+      "value": "managed-subnet-hana-use1"
     },
     "location": {
-      "value": "eastus2"
+      "value": "eastus"
+    },
+    "diagnosticsStorageAccountName": {
+        "value": "rgsapg4xpocdevdiag"
+    },
+    "diagnosticsStorageAccountId": {
+        "value": "/subscriptions/dc3603a9-58c2-4916-9823-160062d01cc4/resourceGroups/RG_SAP_G4X_POC_DEV/providers/Microsoft.Storage/storageAccounts/rgsapg4xpocdevdiag"
     }
   }
 }
